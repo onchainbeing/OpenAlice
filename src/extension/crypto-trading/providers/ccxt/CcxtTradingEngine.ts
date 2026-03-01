@@ -114,31 +114,32 @@ export class CcxtTradingEngine implements ICryptoTradingEngine {
         }
       }
 
-      const params: Record<string, unknown> = {};
       const hedged = await this.getHedgeMode();
-      if (this.isBinanceSwap()) {
-        if (hedged === true) {
-          // Binance hedge mode requires LONG/SHORT side-specific orders.
-          params.positionSide = this.inferHedgePositionSide(order.side, !!order.reduceOnly);
-        } else if (hedged === false) {
-          // One-way mode accepts BOTH and keeps semantics explicit.
-          params.positionSide = 'BOTH';
+      const tryCreate = async (hedgeMode: boolean | null) => {
+        const params = this.buildOrderParams(order, hedgeMode);
+        return this.exchange.createOrder(
+          ccxtSymbol,
+          order.type,
+          order.side,
+          size,
+          order.type === 'limit' ? order.price : undefined,
+          params,
+        );
+      };
+
+      let ccxtOrder;
+      try {
+        ccxtOrder = await tryCreate(hedged);
+      } catch (err) {
+        // Binance -4061 means request positionSide conflicts with account mode.
+        if (this.isBinanceSwap() && this.isPositionSideMismatchError(err)) {
+          const fallbackHedgeMode = hedged === true ? false : true;
+          ccxtOrder = await tryCreate(fallbackHedgeMode);
+          this.cachedHedgeMode = fallbackHedgeMode;
+        } else {
+          throw err;
         }
       }
-
-      // Binance hedge mode rejects reduceOnly; side+positionSide already imply close/open.
-      if (order.reduceOnly && !(this.isBinanceSwap() && hedged === true)) {
-        params.reduceOnly = true;
-      }
-
-      const ccxtOrder = await this.exchange.createOrder(
-        ccxtSymbol,
-        order.type,
-        order.side,
-        size,
-        order.type === 'limit' ? order.price : undefined,
-        params,
-      );
 
       // Cache orderId -> symbol mapping
       if (ccxtOrder.id) {
@@ -339,6 +340,33 @@ export class CcxtTradingEngine implements ICryptoTradingEngine {
     } catch {
       return null;
     }
+  }
+
+  /** Build exchange params while honoring Binance one-way/hedge differences. */
+  private buildOrderParams(order: CryptoPlaceOrderRequest, hedged: boolean | null): Record<string, unknown> {
+    const params: Record<string, unknown> = {};
+
+    if (this.isBinanceSwap()) {
+      if (hedged === true) {
+        // Binance hedge mode requires LONG/SHORT side-specific orders.
+        params.positionSide = this.inferHedgePositionSide(order.side, !!order.reduceOnly);
+      } else if (hedged === false) {
+        // One-way mode accepts BOTH and keeps semantics explicit.
+        params.positionSide = 'BOTH';
+      }
+    }
+
+    // Binance hedge mode rejects reduceOnly; side+positionSide already imply close/open.
+    if (order.reduceOnly && !(this.isBinanceSwap() && hedged === true)) {
+      params.reduceOnly = true;
+    }
+
+    return params;
+  }
+
+  private isPositionSideMismatchError(err: unknown): boolean {
+    const msg = err instanceof Error ? err.message : String(err);
+    return msg.includes('-4061') || /position side does not match/i.test(msg);
   }
 
   /**
