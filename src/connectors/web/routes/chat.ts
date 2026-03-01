@@ -64,9 +64,11 @@ export function createChatRoutes({ ctx, session, sseClients }: ChatDeps) {
         send: (data) => { stream.writeSSE({ data }).catch(() => {}) },
       })
 
+      // Emit an immediate heartbeat so browsers/proxies mark the stream as alive.
+      stream.writeSSE({ event: 'ping', data: '' }).catch(() => {})
       const pingInterval = setInterval(() => {
         stream.writeSSE({ event: 'ping', data: '' }).catch(() => {})
-      }, 30_000)
+      }, 10_000)
 
       stream.onAbort(() => {
         clearInterval(pingInterval)

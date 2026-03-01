@@ -20,9 +20,11 @@ export function createEventsRoutes(ctx: EngineContext) {
         stream.writeSSE({ data: JSON.stringify(entry) }).catch(() => {})
       })
 
+      // Emit an immediate heartbeat so browsers/proxies mark the stream as alive.
+      stream.writeSSE({ event: 'ping', data: '' }).catch(() => {})
       const pingInterval = setInterval(() => {
         stream.writeSSE({ event: 'ping', data: '' }).catch(() => {})
-      }, 30_000)
+      }, 10_000)
 
       stream.onAbort(() => {
         clearInterval(pingInterval)

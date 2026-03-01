@@ -111,6 +111,7 @@ NOTE: This stages the operation. Call cryptoWalletCommit + cryptoWalletPush to e
             'Market order (immediate) or Limit order (at specific price)',
           ),
         size: z
+          .coerce
           .number()
           .positive()
           .optional()
@@ -118,6 +119,7 @@ NOTE: This stages the operation. Call cryptoWalletCommit + cryptoWalletPush to e
             'Order size in coins (e.g. 0.5 BTC). Mutually exclusive with usd_size.',
           ),
         usd_size: z
+          .coerce
           .number()
           .positive()
           .optional()
@@ -125,11 +127,13 @@ NOTE: This stages the operation. Call cryptoWalletCommit + cryptoWalletPush to e
             'Order size in USD (e.g. 1000 USDT). Will auto-calculate coin size. Mutually exclusive with size.',
           ),
         price: z
+          .coerce
           .number()
           .positive()
           .optional()
           .describe('Price (required for limit orders)'),
         leverage: z
+          .coerce
           .number()
           .int()
           .min(1)
@@ -169,6 +173,7 @@ NOTE: This stages the operation. Call cryptoWalletCommit + cryptoWalletPush to e
       inputSchema: z.object({
         symbol: z.string().describe('Trading pair symbol, e.g. BTC/USD'),
         size: z
+          .coerce
           .number()
           .positive()
           .optional()
@@ -211,6 +216,7 @@ NOTE: This stages the operation. Call cryptoWalletCommit + cryptoWalletPush to e
       inputSchema: z.object({
         symbol: z.string().describe('Trading pair symbol, e.g. BTC/USD'),
         newLeverage: z
+          .coerce
           .number()
           .int()
           .min(1)

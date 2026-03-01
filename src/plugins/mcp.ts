@@ -58,15 +58,14 @@ export class McpPlugin implements Plugin {
   private server: ReturnType<typeof serve> | null = null
 
   constructor(
-    private tools: Record<string, Tool>,
+    private getTools: () => Record<string, Tool>,
     private port: number,
   ) {}
 
   async start(_ctx: EngineContext) {
-    const tools = this.tools
-
     const createMcpServer = () => {
       const mcp = new McpServer({ name: 'open-alice', version: '1.0.0' })
+      const tools = this.getTools()
 
       for (const [name, t] of Object.entries(tools)) {
         if (!t.execute) continue

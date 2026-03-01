@@ -29,12 +29,16 @@ function stripImageData(raw: string): string {
 const NORMAL_ALLOWED_TOOLS = [
   'Read', 'Write', 'Edit', 'Glob', 'Grep', 'WebSearch', 'WebFetch',
   'mcp__open-alice__*',
+  'mcp__opennews__*',
+  'mcp__opentwitter__*',
 ]
 
 /** Tools pre-approved in evolution mode (includes Bash). */
 const EVOLUTION_ALLOWED_TOOLS = [
   'Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep', 'WebSearch', 'WebFetch',
   'mcp__open-alice__*',
+  'mcp__opennews__*',
+  'mcp__opentwitter__*',
 ]
 
 /** Extra tools to disallow in normal mode. */

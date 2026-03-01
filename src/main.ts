@@ -392,7 +392,7 @@ async function main() {
 
   // MCP Server is always active when a port is set — Claude Code provider depends on it for tools
   if (config.connectors.mcp.port) {
-    corePlugins.push(new McpPlugin(toolCenter.getMcpTools(), config.connectors.mcp.port))
+    corePlugins.push(new McpPlugin(() => toolCenter.getMcpTools(), config.connectors.mcp.port))
   }
 
   // Web UI is always active (no enabled flag)

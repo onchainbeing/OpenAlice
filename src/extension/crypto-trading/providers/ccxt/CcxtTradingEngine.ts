@@ -231,15 +231,38 @@ export class CcxtTradingEngine implements ICryptoTradingEngine {
     this.ensureInit();
 
     const [balance, rawPositions] = await Promise.all([
-      this.exchange.fetchBalance(),
+      this.fetchAccountBalance(),
       this.exchange.fetchPositions(),
     ]);
 
     // CCXT Balance uses indexer to access currency
     const bal = balance as unknown as Record<string, Record<string, unknown>>;
-    const total = parseFloat(String(bal['total']?.['USDT'] ?? bal['total']?.['USD'] ?? 0));
-    const free = parseFloat(String(bal['free']?.['USDT'] ?? bal['free']?.['USD'] ?? 0));
-    const used = parseFloat(String(bal['used']?.['USDT'] ?? bal['used']?.['USD'] ?? 0));
+    const info = (balance as unknown as Record<string, unknown>)['info'] as Record<string, unknown> | undefined;
+    const assets = Array.isArray(info?.['assets']) ? info!['assets'] as Array<Record<string, unknown>> : [];
+    const usdtAsset = assets.find((a) => String(a['asset']) === 'USDT');
+
+    // Prefer futures wallet fields when available (Binance futures).
+    const total = parseFloat(String(
+      usdtAsset?.['walletBalance']
+      ?? bal['total']?.['USDT']
+      ?? bal['total']?.['USD']
+      ?? info?.['totalWalletBalance']
+      ?? 0,
+    ));
+    const free = parseFloat(String(
+      usdtAsset?.['availableBalance']
+      ?? bal['free']?.['USDT']
+      ?? bal['free']?.['USD']
+      ?? info?.['availableBalance']
+      ?? 0,
+    ));
+    const used = parseFloat(String(
+      usdtAsset?.['initialMargin']
+      ?? bal['used']?.['USDT']
+      ?? bal['used']?.['USD']
+      ?? info?.['totalInitialMargin']
+      ?? 0,
+    ));
 
     // Aggregate PnL from raw positions
     let unrealizedPnL = 0;
@@ -251,13 +274,29 @@ export class CcxtTradingEngine implements ICryptoTradingEngine {
     }
 
     return {
-      balance: free,
+      // Show wallet balance (not tiny available dust) to match exchange account view.
+      balance: total,
       totalMargin: used,
       unrealizedPnL,
-      equity: total,
+      equity: parseFloat(String(info?.['totalMarginBalance'] ?? total)),
       realizedPnL,
       totalPnL: realizedPnL + unrealizedPnL,
     };
+  }
+
+  /**
+   * For swap/futures accounts, prefer futures balance endpoints.
+   * Some exchanges (e.g. Binance) return spot balance by default.
+   */
+  private async fetchAccountBalance() {
+    if (this.config.defaultMarketType === 'swap') {
+      try {
+        return await this.exchange.fetchBalance({ type: 'future' });
+      } catch {
+        // Fallback to default balance if exchange-specific param is unsupported.
+      }
+    }
+    return await this.exchange.fetchBalance();
   }
 
   async cancelOrder(orderId: string): Promise<boolean> {
