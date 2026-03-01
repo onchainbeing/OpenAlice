@@ -36,6 +36,7 @@ export class CcxtTradingEngine implements ICryptoTradingEngine {
   private exchange: Exchange;
   private symbolMapper: SymbolMapper;
   private initialized = false;
+  private cachedHedgeMode: boolean | null = null;
 
   // Maintain orderId -> ccxtSymbol mapping for cancelOrder
   private orderSymbolCache = new Map<string, string>();
@@ -114,7 +115,21 @@ export class CcxtTradingEngine implements ICryptoTradingEngine {
       }
 
       const params: Record<string, unknown> = {};
-      if (order.reduceOnly) params.reduceOnly = true;
+      const hedged = await this.getHedgeMode();
+      if (this.isBinanceSwap()) {
+        if (hedged === true) {
+          // Binance hedge mode requires LONG/SHORT side-specific orders.
+          params.positionSide = this.inferHedgePositionSide(order.side, !!order.reduceOnly);
+        } else if (hedged === false) {
+          // One-way mode accepts BOTH and keeps semantics explicit.
+          params.positionSide = 'BOTH';
+        }
+      }
+
+      // Binance hedge mode rejects reduceOnly; side+positionSide already imply close/open.
+      if (order.reduceOnly && !(this.isBinanceSwap() && hedged === true)) {
+        params.reduceOnly = true;
+      }
 
       const ccxtOrder = await this.exchange.createOrder(
         ccxtSymbol,
@@ -297,6 +312,45 @@ export class CcxtTradingEngine implements ICryptoTradingEngine {
       }
     }
     return await this.exchange.fetchBalance();
+  }
+
+  /** True when exchange is Binance and market type is swap/futures. */
+  private isBinanceSwap(): boolean {
+    return this.exchange.id === 'binance' && this.config.defaultMarketType === 'swap';
+  }
+
+  /**
+   * Fetch and cache hedge mode. Returns null when exchange doesn't support lookup.
+   * For Binance futures: true = hedge mode (dual-side), false = one-way mode.
+   */
+  private async getHedgeMode(): Promise<boolean | null> {
+    if (!this.isBinanceSwap()) return null;
+    if (this.cachedHedgeMode !== null) return this.cachedHedgeMode;
+
+    try {
+      const fn = (this.exchange as unknown as { fetchPositionMode?: () => Promise<{ hedged?: boolean }> }).fetchPositionMode;
+      if (!fn) return null;
+      const res = await fn.call(this.exchange);
+      if (typeof res?.hedged === 'boolean') {
+        this.cachedHedgeMode = res.hedged;
+        return res.hedged;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * In Binance hedge mode:
+   * - Open long: BUY + LONG
+   * - Open short: SELL + SHORT
+   * - Close long: SELL + LONG (reduceOnly=true in request)
+   * - Close short: BUY + SHORT (reduceOnly=true in request)
+   */
+  private inferHedgePositionSide(side: 'buy' | 'sell', reduceOnly: boolean): 'LONG' | 'SHORT' {
+    if (side === 'buy') return reduceOnly ? 'SHORT' : 'LONG';
+    return reduceOnly ? 'LONG' : 'SHORT';
   }
 
   async cancelOrder(orderId: string): Promise<boolean> {
